@@ -1,0 +1,42 @@
+{
+  "green": {
+    "name": "绿色",
+    "bg_color": "#0D1117",
+    "card_color": "#161B22",
+    "primary_color": "#238636",
+    "accent_color": "#58A6FF",
+    "danger_color": "#F85149",
+    "text_color": "#C9D1D9",
+    "subtext_color": "#8B949E"
+  },
+  "blue": {
+    "name": "蓝色",
+    "bg_color": "#0D1117",
+    "card_color": "#161B22",
+    "primary_color": "#58A6FF",
+    "accent_color": "#238636",
+    "danger_color": "#F85149",
+    "text_color": "#C9D1D9",
+    "subtext_color": "#8B949E"
+  },
+  "red": {
+    "name": "红色",
+    "bg_color": "#0D1117",
+    "card_color": "#161B22",
+    "primary_color": "#F85149",
+    "accent_color": "#58A6FF",
+    "danger_color": "#DA3633",
+    "text_color": "#C9D1D9",
+    "subtext_color": "#8B949E"
+  },
+  "purple": {
+    "name": "紫色",
+    "bg_color": "#0D1117",
+    "card_color": "#161B22",
+    "primary_color": "#A371F7",
+    "accent_color": "#238636",
+    "danger_color": "#F85149",
+    "text_color": "#C9D1D9",
+    "subtext_color": "#8B949E"
+  }
+}
