@@ -5,7 +5,7 @@ description = "密码管理器"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
-    { name = "Developer", email = "dev@example.com" }
+    { name = "Anthony", email = "610621088@qq.com" }
 ]
 dependencies = [
     "flet>=0.70.0.dev5755",
@@ -21,8 +21,7 @@ dev = [
 
 [tool.flet]
 org = "com.passwordmanager"
-product = "passwordmanager"
-company = "PasswordManager"
+product = "密码管理器"
 copyright = "Copyright (C) 2026"
 android_min_sdk = 24
 target_arch = ["arm64-v8a", "armeabi-v7a"]
