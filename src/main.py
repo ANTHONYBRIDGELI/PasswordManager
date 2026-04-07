@@ -4,6 +4,8 @@ import os
 import re
 import subprocess
 import platform
+from datetime import datetime
+
 from constants import (
     APP_NAME,
     APP_VERSION,
@@ -201,6 +203,14 @@ class PasswordManagerApp:
         self.update_password_list()
     
     def show_settings_dialog(self, e):
+        def handle_export(e):
+            import asyncio
+            asyncio.create_task(self.async_export_passwords())
+        
+        def handle_import(e):
+            import asyncio
+            asyncio.create_task(self.async_show_import_dialog())
+        
         theme_options = [
             ft.dropdown.Option("system", self.t("follow_system")),
             ft.dropdown.Option("dark", self.t("dark")),
@@ -242,6 +252,15 @@ class PasswordManagerApp:
                     ),
                 ]),
                 ft.Container(height=10),
+                ft.TextButton(
+                    content=ft.Text(self.t("export")),
+                    on_click=handle_export,
+                ),
+                ft.TextButton(
+                    content=ft.Text(self.t("import")),
+                    on_click=handle_import,
+                ),
+                ft.Container(height=5),
                 ft.Text(f"{self.t('version')}: {APP_VERSION}", size=12, color=self.subtext_color, text_align=ft.TextAlign.CENTER),
             ], spacing=10, tight=True),
             bgcolor=self.card_color,
@@ -250,6 +269,248 @@ class PasswordManagerApp:
         )
         self.page.show_dialog(dialog)
     
+    def get_downloads_dir(self):
+        if platform.system() == "Android":
+            app_dir = os.path.join(os.getcwd(), "exports")
+            if not os.path.exists(app_dir):
+                os.makedirs(app_dir, exist_ok=True)
+            return app_dir
+        elif platform.system() == "Darwin":
+            downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+            if os.path.exists(downloads):
+                return downloads
+            return os.path.expanduser("~")
+        else:
+            downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+            if os.path.exists(downloads):
+                return downloads
+            xdg_download = os.path.expanduser("~/下载")
+            if os.path.exists(xdg_download):
+                return xdg_download
+            return os.path.expanduser("~")
+    
+    async def async_export_passwords(self):
+        if not self.passwords:
+            self.page.show_dialog(ft.AlertDialog(
+                modal=False,
+                open=True,
+                title=ft.Text("提示"),
+                content=ft.Text("没有密码可导出"),
+                bgcolor=self.card_color,
+            ))
+            return
+        
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"passwords_export_{timestamp}.json"
+            
+            export_data = {
+                "version": "1.0",
+                "exported_at": datetime.now().isoformat(),
+                "password_count": len(self.passwords),
+                "passwords": [p.to_dict() for p in self.passwords]
+            }
+            file_content_bytes = json.dumps(export_data, ensure_ascii=False, indent=2).encode("utf-8")
+            
+            if self.file_picker is None or not self.file_picker_initialized:
+                self.file_picker = ft.FilePicker()
+                self.file_picker_initialized = True
+            
+            result = await self.file_picker.save_file(
+                dialog_title=self.t("export"),
+                file_name=default_filename,
+                allowed_extensions=["json"],
+                src_bytes=file_content_bytes
+            )
+            
+            if result:
+                self.page.show_dialog(ft.AlertDialog(
+                    modal=False,
+                    open=True,
+                    title=ft.Text(self.t("export_success")),
+                    content=ft.Text(f"{self.t('export_success')}"),
+                    bgcolor=self.card_color,
+                ))
+        except Exception as ex:
+            self.page.show_dialog(ft.AlertDialog(
+                modal=False,
+                open=True,
+                title=ft.Text(self.t("export_failed")),
+                content=ft.Text(f"{self.t('export_error')}:\n{str(ex)}"),
+                bgcolor=self.card_color,
+            ))
+    
+    async def async_show_import_dialog(self):
+        try:
+            if self.file_picker is None or not self.file_picker_initialized:
+                self.file_picker = ft.FilePicker()
+                self.file_picker_initialized = True
+            
+            result = await self.file_picker.pick_files(
+                dialog_title=self.t("select_file"),
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["json"],
+                allow_multiple=False
+            )
+            
+            if result and len(result) > 0:
+                filepath = result[0].path
+                if not filepath:
+                    return
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    
+                    if "passwords" in data:
+                        imported = data["passwords"]
+                    elif isinstance(data, list):
+                        imported = data
+                    else:
+                        raise ValueError("Invalid file format")
+                    
+                    imported_entries = []
+                    for item in imported:
+                        if isinstance(item, dict) and "name" in item and "password" in item:
+                            entry = PasswordEntry(
+                                name=item.get("name", ""),
+                                account=item.get("account", ""),
+                                password=item.get("password", ""),
+                                notes=item.get("notes", ""),
+                            )
+                            imported_entries.append(entry)
+                    
+                    existing_names = set(p.name for p in self.passwords)
+                    duplicate_count = sum(1 for e in imported_entries if e.name in existing_names)
+                    
+                    if duplicate_count > 0:
+                        self.pending_import_entries = imported_entries
+                        self.show_import_mode_dialog(duplicate_count)
+                    else:
+                        self.do_import(imported_entries, "direct_add")
+                except Exception as ex:
+                    self.page.show_dialog(ft.AlertDialog(
+                        modal=False,
+                        open=True,
+                        title=ft.Text(self.t("import_failed")),
+                        content=ft.Text(f"{self.t('import_error')}:\n{str(ex)}"),
+                        bgcolor=self.card_color,
+                    ))
+        except Exception as e:
+            self.page.show_dialog(ft.AlertDialog(
+                modal=False,
+                open=True,
+                title=ft.Text("错误"),
+                content=ft.Text(f"文件选择器不可用:\n{str(e)}"),
+                bgcolor=self.card_color,
+            ))
+        self.page.update()
+    
+    def show_import_mode_dialog(self, duplicate_count):
+        self.selected_import_mode = None
+        
+        def on_radio_change(e):
+            self.selected_import_mode = e.control.value
+        
+        def on_confirm(e):
+            if self.selected_import_mode is None:
+                self.page.show_dialog(ft.AlertDialog(
+                    modal=True,
+                    open=True,
+                    title=ft.Text("警告"),
+                    content=ft.Text(self.t("select_import_mode")),
+                    bgcolor=self.card_color,
+                    shape=ft.RoundedRectangleBorder(radius=16),
+                ))
+                return
+            self.page.pop_dialog()
+            self.do_import(self.pending_import_entries, self.selected_import_mode)
+        
+        mode_selection = ft.RadioGroup(
+            content=ft.Column([
+                ft.Radio(value="direct_add", label=self.t("direct_add")),
+                ft.Container(
+                    content=ft.Text(self.t("direct_add_desc"), size=12, color=self.subtext_color),
+                    padding=ft.padding.only(left=30, bottom=10)
+                ),
+                ft.Radio(value="update_add", label=self.t("update_add")),
+                ft.Container(
+                    content=ft.Text(self.t("update_add_desc"), size=12, color=self.subtext_color),
+                    padding=ft.padding.only(left=30, bottom=10)
+                ),
+                ft.Radio(value="diff_add", label=self.t("diff_add")),
+                ft.Container(
+                    content=ft.Text(self.t("diff_add_desc"), size=12, color=self.subtext_color),
+                    padding=ft.padding.only(left=30, bottom=10)
+                ),
+                ft.Radio(value="overwrite_add", label=self.t("overwrite_add")),
+                ft.Container(
+                    content=ft.Text(self.t("overwrite_add_desc"), size=12, color=self.subtext_color),
+                    padding=ft.padding.only(left=30, bottom=10)
+                ),
+            ], spacing=0),
+            on_change=on_radio_change,
+        )
+        
+        dialog = ft.AlertDialog(
+            modal=True,
+            open=True,
+            title=ft.Text(self.t("select_import_mode"), size=20, weight=ft.FontWeight.W_600),
+            content=ft.Column([
+                ft.Text(self.t("duplicates_found") + " " + str(duplicate_count) + " " + self.t("import_mode_desc"), size=14, color=self.subtext_color),
+                ft.Container(height=10),
+                mode_selection,
+                ft.Container(height=10),
+                ft.Row([
+                    ft.TextButton(self.t("cancel"), on_click=lambda _: self.page.pop_dialog()),
+                    ft.Container(expand=True),
+                    ft.ElevatedButton(self.t("confirm"), on_click=on_confirm, bgcolor=self.primary_color),
+                ]),
+            ], spacing=5),
+            bgcolor=self.card_color,
+            shape=ft.RoundedRectangleBorder(radius=16),
+        )
+        self.page.show_dialog(dialog)
+    
+    def do_import(self, imported_entries, mode):
+        existing_names = {p.name for p in self.passwords}
+        count = 0
+        
+        if mode == "overwrite_add":
+            self.passwords.clear()
+            for entry in imported_entries:
+                self.passwords.append(entry)
+                count += 1
+        elif mode == "direct_add":
+            for entry in imported_entries:
+                self.passwords.append(entry)
+                count += 1
+        elif mode == "update_add":
+            for entry in imported_entries:
+                existing = next((p for p in self.passwords if p.name == entry.name), None)
+                if existing:
+                    existing.account = entry.account
+                    existing.password = entry.password
+                    existing.notes = entry.notes
+                else:
+                    self.passwords.append(entry)
+                count += 1
+        elif mode == "diff_add":
+            for entry in imported_entries:
+                if entry.name not in existing_names:
+                    self.passwords.append(entry)
+                    count += 1
+        
+        save_passwords(self.passwords)
+        self.update_password_list()
+        
+        self.page.show_dialog(ft.AlertDialog(
+            modal=False,
+            open=True,
+            title=ft.Text(self.t("import_success")),
+            content=ft.Text(f"{self.t('import_success')}: {count}"),
+            bgcolor=self.card_color,
+        ))
+
     def update_password_list(self):
         self.content_container.controls.clear()
         
