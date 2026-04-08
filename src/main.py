@@ -16,7 +16,12 @@ from constants import (
 from themes import load_settings, save_settings, load_color_themes, get_color_theme_colors, is_color_theme
 from languages import load_languages, DEFAULT_LANGUAGES
 from models import PasswordEntry
-from storage import load_passwords, save_passwords
+from storage import (
+    load_passwords, save_passwords,
+    load_settings_from_file, save_settings_to_file,
+    load_color_themes_from_file, save_color_themes_to_file,
+    ensure_app_folder, pick_documents_folder, has_storage
+)
 
 def fuzzy_match(text, query):
     if not query:
@@ -31,16 +36,24 @@ class PasswordManagerApp:
         self.page = page
         self.page.theme_mode = ft.ThemeMode.DARK
         self.page.padding = 0
-        self.passwords = load_passwords(self.page)
-        self.filtered_passwords = self.passwords.copy()
         self.search_query = ""
         self.file_picker = None
         self.file_picker_initialized = False
-        self.color_themes = load_color_themes()
+        
+        storage_path = ensure_app_folder(self.page)
+        
+        file_settings = load_settings_from_file(self.page)
+        self.settings = file_settings if file_settings else load_settings()
+        
+        file_themes = load_color_themes_from_file(self.page)
+        self.color_themes = file_themes if file_themes else load_color_themes()
+        
         self.languages = load_languages()
-        self.settings = load_settings()
         self.theme_setting = self.settings.get("theme", "dark")
         self.lang_setting = self.settings.get("lang", "zh")
+        
+        self.passwords = load_passwords(self.page)
+        self.filtered_passwords = self.passwords.copy()
         
         self.update_theme_mode()
         
@@ -49,6 +62,44 @@ class PasswordManagerApp:
         self.build_ui()
         self.update_password_list()
         self.page.update()
+        
+        if not storage_path:
+            self.show_storage_setup_dialog()
+    
+    def show_storage_setup_dialog(self):
+        async def on_pick(e):
+            result = await pick_documents_folder(self.page)
+            if result and has_storage(self.page):
+                self.page.pop_dialog()
+                self.passwords = load_passwords(self.page)
+                self.filtered_passwords = self.passwords.copy()
+                self.update_password_list()
+                self.page.update()
+            else:
+                self.page.show_dialog(ft.AlertDialog(
+                    modal=True,
+                    open=True,
+                    title=ft.Text("错误"),
+                    content=ft.Text("无法访问所选文件夹，请选择其他位置"),
+                    bgcolor=self.card_color,
+                    shape=ft.RoundedRectangleBorder(radius=16),
+                ))
+        
+        dialog = ft.AlertDialog(
+            modal=False,
+            open=True,
+            title=ft.Text("存储设置"),
+            content=ft.Column([
+                ft.Text("请选择 Documents 文件夹以保存密码数据"),
+                ft.Text("您的数据将保存在: Documents/PasswordManager/", size=12, color=self.subtext_color),
+            ], spacing=10),
+            actions=[
+                ft.TextButton("选择文件夹", on_click=on_pick),
+            ],
+            bgcolor=self.card_color,
+            shape=ft.RoundedRectangleBorder(radius=16),
+        )
+        self.page.show_dialog(dialog)
     
     def detect_system_theme(self):
         if platform.system() == "Android":
@@ -91,7 +142,7 @@ class PasswordManagerApp:
     def change_theme(self, e):
         self.theme_setting = e.control.value
         self.settings["theme"] = self.theme_setting
-        save_settings(self.settings)
+        save_settings(self.settings, self.page)
         self.update_theme_mode()
         self.setup_colors()
         self.page.controls.clear()
@@ -102,7 +153,7 @@ class PasswordManagerApp:
     def change_language(self, e):
         self.lang_setting = e.control.value
         self.settings["lang"] = self.lang_setting
-        save_settings(self.settings)
+        save_settings(self.settings, self.page)
         self.page.controls.clear()
         self.build_ui()
         self.show_settings_dialog(e)

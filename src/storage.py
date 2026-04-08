@@ -3,55 +3,84 @@ import os
 import base64
 import flet as ft
 
-PASSWORD_KEY = "passwords_v5"
-KEY_KEY = "key_v5"
-PASSWORD_FILE = "passwords.dat"
-KEY_FILE = ".key"
+APP_FOLDER = "PasswordManager"
+PASSWORD_FILE = "passwords.json"
+KEY_FILE = ".encryption_key"
+SETTINGS_FILE = "settings.json"
+COLOR_THEMES_FILE = "color_themes.json"
 
-APP_PACKAGE = "com.passwordmanager"
-PRIMARY_STORAGE = "/data/user/0/{}/files".format(APP_PACKAGE)
+URI_PERMISSION_KEY = "documents_uri"
+_storage_path = None
 
-def get_storage_dir(page):
-    if os.path.exists(PRIMARY_STORAGE) and os.access(PRIMARY_STORAGE, os.W_OK):
-        return PRIMARY_STORAGE
+def get_documents_base_path(page=None):
+    global _storage_path
+    if _storage_path:
+        return _storage_path
     
-    fallback = "/data/data/{}/files".format(APP_PACKAGE)
-    if os.path.exists(fallback) and os.access(fallback, os.W_OK):
-        return fallback
+    if page:
+        try:
+            saved = page.client_storage.get(URI_PERMISSION_KEY)
+            if saved and os.path.exists(saved):
+                _storage_path = saved
+                return saved
+        except:
+            pass
     
-    try:
-        path = page._platform.storage_dir
-        if path and os.path.exists(path) and os.access(path, os.W_OK):
-            return path
-    except:
-        pass
+    default_path = "/storage/emulated/0/Documents"
+    if os.path.exists(default_path) and os.access(default_path, os.W_OK):
+        return default_path
     
-    cwd = os.getcwd()
-    if cwd and ("/data/user/" in cwd or "/data/data/" in cwd):
-        if os.path.exists(cwd) and os.access(cwd, os.W_OK):
-            return cwd
+    for alt in ["/sdcard/Documents", "/storage/self/primary/Documents"]:
+        if os.path.exists(alt) and os.access(alt, os.W_OK):
+            return alt
     
-    try:
-        os.makedirs(PRIMARY_STORAGE, exist_ok=True)
-        if os.path.exists(PRIMARY_STORAGE) and os.access(PRIMARY_STORAGE, os.W_OK):
-            return PRIMARY_STORAGE
-    except:
-        pass
-    
-    return os.getcwd()
+    return None
 
-def get_key(page):
+def get_app_folder_path(page=None):
+    base = get_documents_base_path(page)
+    if base:
+        return os.path.join(base, APP_FOLDER)
+    return None
+
+def ensure_app_folder(page=None):
+    path = get_app_folder_path(page)
+    if path:
+        try:
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
+            if os.path.exists(path) and os.access(path, os.W_OK):
+                return path
+        except:
+            pass
+    return None
+
+def save_documents_base(page, base_path):
+    global _storage_path
+    if base_path and os.path.exists(base_path) and os.access(base_path, os.W_OK):
+        full_path = os.path.join(base_path, APP_FOLDER)
+        try:
+            if not os.path.exists(full_path):
+                os.makedirs(full_path, exist_ok=True)
+            if os.path.exists(full_path) and os.access(full_path, os.W_OK):
+                _storage_path = full_path
+                try:
+                    page.client_storage.set(URI_PERMISSION_KEY, base_path)
+                except:
+                    pass
+                return full_path
+        except:
+            pass
+    return None
+
+def get_key(page=None):
+    path = ensure_app_folder(page)
+    if not path:
+        return None, None
+    
+    key_path = os.path.join(path, KEY_FILE)
     key_data = None
     
-    try:
-        key_data = page.client_storage.get(KEY_KEY)
-    except:
-        pass
-    
-    storage_dir = get_storage_dir(page)
-    key_path = os.path.join(storage_dir, KEY_FILE)
-    
-    if not key_data and os.path.exists(key_path):
+    if os.path.exists(key_path):
         try:
             with open(key_path, "r") as f:
                 key_data = f.read().strip()
@@ -60,29 +89,23 @@ def get_key(page):
     
     if key_data:
         try:
-            key_bytes = base64.b64decode(key_data.encode('utf-8'))
+            key_bytes = base64.b64decode(key_data)
             from cryptography.fernet import Fernet
-            Fernet(key_bytes)
-            return key_bytes
+            f = Fernet(key_bytes)
+            return key_bytes, path
         except:
             pass
     
     from cryptography.fernet import Fernet
     key = Fernet.generate_key()
-    key_b64 = base64.b64encode(key).decode('utf-8')
-    
-    try:
-        page.client_storage.set(KEY_KEY, key_b64)
-    except:
-        pass
     
     try:
         with open(key_path, "w") as f:
-            f.write(key_b64)
+            f.write(base64.b64encode(key).decode())
     except:
-        pass
+        return None, None
     
-    return key
+    return key, path
 
 def get_fernet(key):
     if key is None:
@@ -90,60 +113,141 @@ def get_fernet(key):
     from cryptography.fernet import Fernet
     return Fernet(key)
 
-def load_passwords(page):
+def load_passwords(page=None):
     from models import PasswordEntry
-    encrypted = None
-    storage_dir = get_storage_dir(page)
-    data_path = os.path.join(storage_dir, PASSWORD_FILE)
+    path = ensure_app_folder(page)
+    if not path:
+        return []
     
-    try:
-        encrypted = page.client_storage.get(PASSWORD_KEY)
-    except:
-        pass
-    
-    if not encrypted and os.path.exists(data_path):
-        try:
-            with open(data_path, "r", encoding="utf-8") as f:
-                encrypted = f.read()
-        except:
-            pass
-    
-    if not encrypted:
+    data_path = os.path.join(path, PASSWORD_FILE)
+    if not os.path.exists(data_path):
         return []
     
     try:
-        key = get_key(page)
-        fernet = get_fernet(key)
-        if fernet:
-            decrypted = fernet.decrypt(encrypted.encode('utf-8'))
-            data = json.loads(decrypted.decode('utf-8'))
-            return [PasswordEntry.from_dict(item) for item in data]
-    except Exception as e:
-        print(f"Load error: {e}")
-    
-    return []
-
-def save_passwords(page, passwords):
-    try:
-        key = get_key(page)
+        with open(data_path, "r", encoding="utf-8") as f:
+            encrypted = f.read()
+        if not encrypted:
+            return []
+        
+        key, _ = get_key(page)
         fernet = get_fernet(key)
         if fernet is None:
+            return []
+        
+        decrypted = fernet.decrypt(encrypted.encode())
+        data = json.loads(decrypted)
+        return [PasswordEntry.from_dict(item) for item in data]
+    except Exception as e:
+        print(f"Load error: {e}")
+        return []
+
+def save_passwords(page=None, passwords=None):
+    if passwords is None:
+        return
+    
+    path = ensure_app_folder(page)
+    if not path:
+        print("No storage path available")
+        return
+    
+    try:
+        key, _ = get_key(page)
+        fernet = get_fernet(key)
+        if fernet is None:
+            print("No fernet available")
             return
         
         data = json.dumps([p.to_dict() for p in passwords], ensure_ascii=False, indent=2)
-        encrypted = fernet.encrypt(data.encode('utf-8')).decode('utf-8')
+        encrypted = fernet.encrypt(data.encode())
         
-        try:
-            page.client_storage.set(PASSWORD_KEY, encrypted)
-        except:
-            pass
-        
-        storage_dir = get_storage_dir(page)
-        data_path = os.path.join(storage_dir, PASSWORD_FILE)
-        try:
-            with open(data_path, "w", encoding="utf-8") as f:
-                f.write(encrypted)
-        except:
-            pass
+        data_path = os.path.join(path, PASSWORD_FILE)
+        with open(data_path, "w", encoding="utf-8") as f:
+            f.write(encrypted.decode())
     except Exception as e:
         print(f"Save error: {e}")
+
+def load_settings_from_file(page=None):
+    path = ensure_app_folder(page)
+    if not path:
+        return None
+    
+    settings_path = os.path.join(path, SETTINGS_FILE)
+    if not os.path.exists(settings_path):
+        return None
+    
+    try:
+        with open(settings_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return None
+
+def save_settings_to_file(page=None, settings=None):
+    if settings is None:
+        return
+    
+    path = ensure_app_folder(page)
+    if not path:
+        return
+    
+    settings_path = os.path.join(path, SETTINGS_FILE)
+    try:
+        with open(settings_path, "w", encoding="utf-8") as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Save settings error: {e}")
+
+def load_color_themes_from_file(page=None):
+    path = ensure_app_folder(page)
+    if not path:
+        return None
+    
+    themes_path = os.path.join(path, COLOR_THEMES_FILE)
+    if not os.path.exists(themes_path):
+        return None
+    
+    try:
+        with open(themes_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return None
+
+def save_color_themes_to_file(page=None, themes=None):
+    if themes is None:
+        return
+    
+    path = ensure_app_folder(page)
+    if not path:
+        return
+    
+    themes_path = os.path.join(path, COLOR_THEMES_FILE)
+    try:
+        with open(themes_path, "w", encoding="utf-8") as f:
+            json.dump(themes, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Save themes error: {e}")
+
+def has_storage(page=None):
+    path = ensure_app_folder(page)
+    return path is not None
+
+async def pick_documents_folder(page):
+    picker = ft.FilePicker()
+    page.overlay.append(picker)
+    page.update()
+    
+    result = await picker.pick_files(
+        dialog_title="选择 Documents 文件夹",
+        initial_directory="/storage/emulated/0/Documents",
+        allow_multiple=False
+    )
+    
+    if result and len(result) > 0:
+        file_path = result[0].path
+        if file_path:
+            base = os.path.dirname(file_path)
+            if os.path.exists(base) and os.access(base, os.W_OK):
+                result_path = save_documents_base(page, base)
+                if result_path:
+                    return result_path
+    
+    return None

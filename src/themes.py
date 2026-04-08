@@ -4,43 +4,54 @@ from constants import (
     DEFAULT_COLOR_THEMES,
     DEFAULT_LIGHT_COLORS,
     DEFAULT_DARK_COLORS,
-    get_color_themes_path,
-    get_settings_path,
 )
 
-def load_settings():
-    path = get_settings_path()
-    if os.path.exists(path):
+_settings_cache = None
+_color_themes_cache = None
+
+def load_settings(page=None):
+    from storage import load_settings_from_file
+    file_settings = None
+    if page:
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            file_settings = load_settings_from_file(page)
         except:
             pass
-    return {"theme": "dark", "lang": "zh"}
+    
+    if file_settings:
+        return file_settings
+    
+    from constants import DEFAULT_SETTINGS
+    return DEFAULT_SETTINGS.copy()
 
-def save_settings(settings):
-    path = get_settings_path()
+def save_settings(settings, page=None):
+    from storage import save_settings_to_file
+    
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(settings, f, ensure_ascii=False, indent=2)
+        save_settings_to_file(page, settings)
     except:
         pass
 
-def load_color_themes():
-    path = get_color_themes_path()
-    if os.path.exists(path):
+def load_color_themes(page=None):
+    from storage import load_color_themes_from_file
+    
+    if page:
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            file_themes = load_color_themes_from_file(page)
+            if file_themes:
+                return file_themes
         except:
             pass
-    themes = {}
+    
+    return DEFAULT_COLOR_THEMES.copy()
+
+def save_color_themes(themes, page=None):
+    from storage import save_color_themes_to_file
+    
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(DEFAULT_COLOR_THEMES, f, ensure_ascii=False, indent=2)
+        save_color_themes_to_file(page, themes)
     except:
         pass
-    return DEFAULT_COLOR_THEMES
 
 def get_color_theme_colors(theme_id, is_dark):
     if theme_id in DEFAULT_COLOR_THEMES:
