@@ -1,7 +1,7 @@
 import os
 
 APP_NAME = "password_manager"
-APP_VERSION = "0.8.4"
+APP_VERSION = "0.8.5"
 DATA_FILE = "passwords.json"
 KEY_FILE = ".encryption_key"
 SETTINGS_FILE = "settings.json"

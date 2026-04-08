@@ -31,7 +31,7 @@ class PasswordManagerApp:
         self.page = page
         self.page.theme_mode = ft.ThemeMode.DARK
         self.page.padding = 0
-        self.passwords = load_passwords()
+        self.passwords = load_passwords(self.page)
         self.filtered_passwords = self.passwords.copy()
         self.search_query = ""
         self.file_picker = None
@@ -500,7 +500,7 @@ class PasswordManagerApp:
                     self.passwords.append(entry)
                     count += 1
         
-        save_passwords(self.passwords)
+        save_passwords(self.page, self.passwords)
         self.update_password_list()
         
         self.page.show_dialog(ft.AlertDialog(
@@ -629,7 +629,7 @@ class PasswordManagerApp:
                 )
                 self.passwords.insert(0, new_entry)
             
-            save_passwords(self.passwords)
+            save_passwords(self.page, self.passwords)
             self.update_password_list()
             self.page.pop_dialog()
 
@@ -655,7 +655,7 @@ class PasswordManagerApp:
     def show_delete_dialog(self, password: PasswordEntry):
         def confirm_delete(e):
             self.passwords.remove(password)
-            save_passwords(self.passwords)
+            save_passwords(self.page, self.passwords)
             self.update_password_list()
             self.page.pop_dialog()
 

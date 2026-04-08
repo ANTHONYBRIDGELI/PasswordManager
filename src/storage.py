@@ -1,55 +1,60 @@
 import json
-import os
-import platform
-from cryptography.fernet import Fernet
-from constants import get_data_path, get_key_path
-from models import PasswordEntry
+import base64
+import flet as ft
 
-def get_key():
-    key_file = get_key_path()
+PASSWORD_STORAGE_KEY = "passwords_data"
+KEY_STORAGE_KEY = "encryption_key"
+
+def get_key(page: ft.Page):
     try:
-        if os.path.exists(key_file):
-            with open(key_file, "r") as f:
-                key = f.read().strip()
+        key_b64 = page.client_storage.get(KEY_STORAGE_KEY)
+        if key_b64:
+            from cryptography.fernet import Fernet
             try:
+                key = base64.b64decode(key_b64)
                 Fernet(key)
                 return key
             except:
                 pass
-        key = Fernet.generate_key().decode()
-        with open(key_file, "w") as f:
-            f.write(key)
-        if platform.system() != "Android":
-            os.chmod(key_file, 0o600)
+        from cryptography.fernet import Fernet
+        key = Fernet.generate_key()
+        page.client_storage.set(KEY_STORAGE_KEY, base64.b64encode(key).decode())
         return key
-    except:
-        key = Fernet.generate_key().decode()
-        return key
+    except Exception as e:
+        print(f"Get key error: {e}")
+        return None
 
-def get_fernet():
-    key = get_key()
+def get_fernet(key):
+    if key is None:
+        return None
+    from cryptography.fernet import Fernet
     return Fernet(key)
 
-def load_passwords():
-    data_path = get_data_path()
-    if os.path.exists(data_path):
-        try:
-            with open(data_path, "r", encoding="utf-8") as f:
-                encrypted_data = f.read()
-                if encrypted_data:
-                    fernet = get_fernet()
-                    decrypted_data = fernet.decrypt(encrypted_data.encode())
-                    data = json.loads(decrypted_data)
-                    return [PasswordEntry.from_dict(item) for item in data]
-        except Exception as e:
-            print(f"Load error: {e}")
-            return []
+def load_passwords(page: ft.Page):
+    from models import PasswordEntry
+    try:
+        encrypted_data = page.client_storage.get(PASSWORD_STORAGE_KEY)
+        if encrypted_data:
+            key = get_key(page)
+            fernet = get_fernet(key)
+            if fernet is None:
+                return []
+            decrypted_data = fernet.decrypt(encrypted_data.encode())
+            data = json.loads(decrypted_data)
+            return [PasswordEntry.from_dict(item) for item in data]
+    except Exception as e:
+        print(f"Load error: {e}")
     return []
 
-def save_passwords(passwords):
-    fernet = get_fernet()
-    data = json.dumps([p.to_dict() for p in passwords], ensure_ascii=False, indent=2)
-    encrypted_data = fernet.encrypt(data.encode())
-    data_path = get_data_path()
-    with open(data_path, "w", encoding="utf-8") as f:
-        f.write(encrypted_data.decode())
+def save_passwords(page: ft.Page, passwords):
+    from models import PasswordEntry
+    try:
+        key = get_key(page)
+        fernet = get_fernet(key)
+        if fernet is None:
+            return
+        data = json.dumps([p.to_dict() for p in passwords], ensure_ascii=False, indent=2)
+        encrypted_data = fernet.encrypt(data.encode())
+        page.client_storage.set(PASSWORD_STORAGE_KEY, encrypted_data.decode())
+    except Exception as e:
+        print(f"Save error: {e}")
