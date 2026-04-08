@@ -1,7 +1,3 @@
-import json
-import os
-from constants import get_lang_path
-
 DEFAULT_LANGUAGES = {
     "zh": {
         "name": "中文",
@@ -14,11 +10,9 @@ DEFAULT_LANGUAGES = {
         "dark": "暗黑",
         "light": "明亮",
         "follow_system": "跟随系统",
-        "color_theme": "配色",
         "language": "语言",
         "export": "导出密码本",
         "import": "导入密码本",
-        "name_required": "名称不能为空",
         "add_password": "添加密码",
         "edit_password": "编辑密码",
         "cancel": "取消",
@@ -39,29 +33,20 @@ DEFAULT_LANGUAGES = {
         "copied": "已复制",
         "export_success": "导出成功",
         "export_failed": "导出失败",
-        "export_error": "导出时出错",
         "import_success": "导入成功",
         "import_failed": "导入失败",
-        "import_error": "导入时出错",
-        "no_passwords_to_export": "没有密码可导出",
         "select_file": "选择文件",
-        "custom": "自定义",
-        "green": "绿色",
-        "blue": "蓝色",
-        "red": "红色",
-        "purple": "紫色",
         "import_mode": "导入模式",
         "direct_add": "直接添加",
-        "direct_add_desc": "将JSON中的所有密码直接添加到现有密码中,允许重复",
+        "direct_add_desc": "将JSON中的所有密码直接添加到现有密码中",
         "update_add": "更新添加",
-        "update_add_desc": "对于重名密码使用JSON中的数据更新,其他密码保留",
+        "update_add_desc": "对于重名密码使用JSON中的数据更新",
         "diff_add": "差异添加",
         "diff_add_desc": "只导入JSON中与现有密码不重名的项目",
         "overwrite_add": "完全覆盖",
-        "overwrite_add_desc": "删除所有现有密码,完全使用JSON中的密码",
+        "overwrite_add_desc": "删除所有现有密码，完全使用JSON中的密码",
         "select_import_mode": "选择导入模式",
         "duplicates_found": "发现",
-        "import_mode_desc": "导入模式说明",
         "confirm": "确认",
     },
     "en": {
@@ -75,11 +60,9 @@ DEFAULT_LANGUAGES = {
         "dark": "Dark",
         "light": "Light",
         "follow_system": "Follow System",
-        "color_theme": "Color Theme",
         "language": "Language",
         "export": "Export Passwords",
         "import": "Import Passwords",
-        "name_required": "Name is required",
         "add_password": "Add Password",
         "edit_password": "Edit Password",
         "cancel": "Cancel",
@@ -100,39 +83,39 @@ DEFAULT_LANGUAGES = {
         "copied": "Copied",
         "export_success": "Export Success",
         "export_failed": "Export Failed",
-        "export_error": "Export Error",
         "import_success": "Import Success",
         "import_failed": "Import Failed",
-        "import_error": "Import Error",
-        "no_passwords_to_export": "No passwords to export",
         "select_file": "Select File",
-        "custom": "Custom",
-        "green": "Green",
-        "blue": "Blue",
-        "red": "Red",
-        "purple": "Purple",
         "import_mode": "Import Mode",
         "direct_add": "Direct Add",
-        "direct_add_desc": "Add all passwords from JSON to existing passwords, duplicates allowed",
+        "direct_add_desc": "Add all passwords from JSON to existing passwords",
         "update_add": "Update Add",
-        "update_add_desc": "Update existing passwords with same names from JSON, keep others",
+        "update_add_desc": "Update existing passwords with same names from JSON",
         "diff_add": "Difference Add",
-        "diff_add_desc": "Only import passwords from JSON that don't conflict with existing ones",
+        "diff_add_desc": "Only import passwords from JSON that don't conflict",
         "overwrite_add": "Overwrite All",
         "overwrite_add_desc": "Delete all existing passwords and use only passwords from JSON",
         "select_import_mode": "Select Import Mode",
         "duplicates_found": "Found",
-        "import_mode_desc": "Import Mode Description",
         "confirm": "Confirm",
     }
 }
 
-def load_languages():
-    path = get_lang_path()
-    if os.path.exists(path):
+def load_languages(page=None):
+    from storage import load_languages_from_file
+    if page:
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            file_langs = load_languages_from_file(page)
+            if file_langs:
+                return file_langs
         except:
             pass
     return DEFAULT_LANGUAGES
+
+def save_languages(languages, page=None):
+    from storage import save_languages_to_file
+    if page:
+        try:
+            save_languages_to_file(page, languages)
+        except:
+            pass

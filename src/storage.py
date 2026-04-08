@@ -4,10 +4,11 @@ import base64
 import flet as ft
 
 APP_FOLDER = "PasswordManager"
-PASSWORD_FILE = "passwords.json"
+PASSWORD_FILE = ".passwords.dat"
 KEY_FILE = ".encryption_key"
 SETTINGS_FILE = "settings.json"
 COLOR_THEMES_FILE = "color_themes.json"
+LANG_FILE = "language.json"
 
 URI_PERMISSION_KEY = "documents_uri"
 _storage_path = None
@@ -225,6 +226,36 @@ def save_color_themes_to_file(page=None, themes=None):
             json.dump(themes, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Save themes error: {e}")
+
+def load_languages_from_file(page=None):
+    path = ensure_app_folder(page)
+    if not path:
+        return None
+    
+    lang_path = os.path.join(path, LANG_FILE)
+    if not os.path.exists(lang_path):
+        return None
+    
+    try:
+        with open(lang_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return None
+
+def save_languages_to_file(page=None, languages=None):
+    if languages is None:
+        return
+    
+    path = ensure_app_folder(page)
+    if not path:
+        return
+    
+    lang_path = os.path.join(path, LANG_FILE)
+    try:
+        with open(lang_path, "w", encoding="utf-8") as f:
+            json.dump(languages, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Save languages error: {e}")
 
 def has_storage(page=None):
     path = ensure_app_folder(page)

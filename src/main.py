@@ -13,13 +13,14 @@ from constants import (
     DEFAULT_LIGHT_COLORS,
     DEFAULT_DARK_COLORS,
 )
-from themes import load_settings, save_settings, load_color_themes, get_color_theme_colors, is_color_theme
-from languages import load_languages, DEFAULT_LANGUAGES
+from themes import load_settings, save_settings, load_color_themes, save_color_themes, get_color_theme_colors, is_color_theme
+from languages import load_languages, save_languages, DEFAULT_LANGUAGES
 from models import PasswordEntry
 from storage import (
     load_passwords, save_passwords,
     load_settings_from_file, save_settings_to_file,
     load_color_themes_from_file, save_color_themes_to_file,
+    load_languages_from_file,
     ensure_app_folder, pick_documents_folder, has_storage
 )
 
@@ -46,9 +47,19 @@ class PasswordManagerApp:
         self.settings = file_settings if file_settings else load_settings()
         
         file_themes = load_color_themes_from_file(self.page)
-        self.color_themes = file_themes if file_themes else load_color_themes()
+        if file_themes:
+            self.color_themes = file_themes
+        else:
+            self.color_themes = load_color_themes()
+            if storage_path:
+                save_color_themes(self.color_themes, self.page)
         
-        self.languages = load_languages()
+        self.languages = load_languages(self.page)
+        if storage_path:
+            from languages import DEFAULT_LANGUAGES
+            if not load_languages_from_file(self.page):
+                save_languages(DEFAULT_LANGUAGES, self.page)
+        
         self.theme_setting = self.settings.get("theme", "dark")
         self.lang_setting = self.settings.get("lang", "zh")
         
@@ -267,9 +278,10 @@ class PasswordManagerApp:
             ft.dropdown.Option("dark", self.t("dark")),
             ft.dropdown.Option("light", self.t("light")),
         ]
-        for theme_id in DEFAULT_COLOR_THEMES.keys():
-            theme_data = DEFAULT_COLOR_THEMES[theme_id]
-            theme_options.append(ft.dropdown.Option(theme_id, self.t(theme_data.get("name_key", theme_id))))
+        for theme_id in self.color_themes.keys():
+            theme_data = self.color_themes[theme_id]
+            theme_name = theme_data.get("name", theme_id)
+            theme_options.append(ft.dropdown.Option(theme_id, theme_name))
         
         lang_options = []
         for lang_id, lang_data in self.languages.items():
