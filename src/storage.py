@@ -3,47 +3,58 @@ import os
 import base64
 import flet as ft
 
-PASSWORD_KEY = "passwords_final"
-KEY_KEY = "key_final"
+PASSWORD_KEY = "passwords_v5"
+KEY_KEY = "key_v5"
 PASSWORD_FILE = "passwords.dat"
 KEY_FILE = ".key"
 
+APP_PACKAGE = "com.passwordmanager"
+PRIMARY_STORAGE = "/data/user/0/{}/files".format(APP_PACKAGE)
+
 def get_storage_dir(page):
+    if os.path.exists(PRIMARY_STORAGE) and os.access(PRIMARY_STORAGE, os.W_OK):
+        return PRIMARY_STORAGE
+    
+    fallback = "/data/data/{}/files".format(APP_PACKAGE)
+    if os.path.exists(fallback) and os.access(fallback, os.W_OK):
+        return fallback
+    
     try:
         path = page._platform.storage_dir
-        if path and os.path.exists(path):
+        if path and os.path.exists(path) and os.access(path, os.W_OK):
             return path
     except:
         pass
     
-    for base in [os.getcwd(), "/data/user/0/com.passwordmanager/files"]:
-        if os.path.exists(base):
-            return base
+    cwd = os.getcwd()
+    if cwd and ("/data/user/" in cwd or "/data/data/" in cwd):
+        if os.path.exists(cwd) and os.access(cwd, os.W_OK):
+            return cwd
     
     try:
-        path = os.path.join(os.getcwd(), "pm_data")
-        os.makedirs(path, exist_ok=True)
-        return path
+        os.makedirs(PRIMARY_STORAGE, exist_ok=True)
+        if os.path.exists(PRIMARY_STORAGE) and os.access(PRIMARY_STORAGE, os.W_OK):
+            return PRIMARY_STORAGE
     except:
         pass
     
     return os.getcwd()
 
 def get_key(page):
+    key_data = None
+    
+    try:
+        key_data = page.client_storage.get(KEY_KEY)
+    except:
+        pass
+    
     storage_dir = get_storage_dir(page)
     key_path = os.path.join(storage_dir, KEY_FILE)
     
-    key_data = None
-    if os.path.exists(key_path):
+    if not key_data and os.path.exists(key_path):
         try:
             with open(key_path, "r") as f:
                 key_data = f.read().strip()
-        except:
-            pass
-    
-    if not key_data:
-        try:
-            key_data = page.client_storage.get(KEY_KEY)
         except:
             pass
     
@@ -61,13 +72,13 @@ def get_key(page):
     key_b64 = base64.b64encode(key).decode('utf-8')
     
     try:
-        with open(key_path, "w") as f:
-            f.write(key_b64)
+        page.client_storage.set(KEY_KEY, key_b64)
     except:
         pass
     
     try:
-        page.client_storage.set(KEY_KEY, key_b64)
+        with open(key_path, "w") as f:
+            f.write(key_b64)
     except:
         pass
     
@@ -81,21 +92,19 @@ def get_fernet(key):
 
 def load_passwords(page):
     from models import PasswordEntry
+    encrypted = None
     storage_dir = get_storage_dir(page)
     data_path = os.path.join(storage_dir, PASSWORD_FILE)
     
-    encrypted = None
+    try:
+        encrypted = page.client_storage.get(PASSWORD_KEY)
+    except:
+        pass
     
-    if os.path.exists(data_path):
+    if not encrypted and os.path.exists(data_path):
         try:
             with open(data_path, "r", encoding="utf-8") as f:
                 encrypted = f.read()
-        except:
-            pass
-    
-    if not encrypted:
-        try:
-            encrypted = page.client_storage.get(PASSWORD_KEY)
         except:
             pass
     
@@ -115,8 +124,6 @@ def load_passwords(page):
     return []
 
 def save_passwords(page, passwords):
-    storage_dir = get_storage_dir(page)
-    
     try:
         key = get_key(page)
         fernet = get_fernet(key)
@@ -126,10 +133,17 @@ def save_passwords(page, passwords):
         data = json.dumps([p.to_dict() for p in passwords], ensure_ascii=False, indent=2)
         encrypted = fernet.encrypt(data.encode('utf-8')).decode('utf-8')
         
-        data_path = os.path.join(storage_dir, PASSWORD_FILE)
-        with open(data_path, "w", encoding="utf-8") as f:
-            f.write(encrypted)
+        try:
+            page.client_storage.set(PASSWORD_KEY, encrypted)
+        except:
+            pass
         
-        page.client_storage.set(PASSWORD_KEY, encrypted)
+        storage_dir = get_storage_dir(page)
+        data_path = os.path.join(storage_dir, PASSWORD_FILE)
+        try:
+            with open(data_path, "w", encoding="utf-8") as f:
+                f.write(encrypted)
+        except:
+            pass
     except Exception as e:
         print(f"Save error: {e}")
