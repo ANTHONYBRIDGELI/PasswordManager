@@ -408,6 +408,7 @@ class PasswordManagerApp:
             if self.file_picker is None or not self.file_picker_initialized:
                 self.file_picker = ft.FilePicker()
                 self.file_picker_initialized = True
+                self.page.overlay.append(self.file_picker)
             
             result = await self.file_picker.pick_files(
                 dialog_title=self.t("select_file"),
@@ -764,14 +765,17 @@ class PasswordManagerApp:
         self.page.show_dialog(dialog)
 
     def _detail_row(self, label, value, copy_type):
-        return ft.Row([
-            ft.Column([
+        return ft.Column([
+            ft.Row([
                 ft.Text(label, size=12, color=self.subtext_color),
-                ft.Text(value if value else "-", size=15, color=self.text_color),
-            ], spacing=2),
-            ft.Container(expand=True),
-            ft.IconButton(ft.Icons.COPY, icon_color=self.subtext_color, on_click=lambda _, v=value, l=label: self.copy_to_clipboard(v, l)),
-        ], spacing=8)
+                ft.Container(expand=True),
+                ft.IconButton(ft.Icons.COPY, icon_size=18, icon_color=self.subtext_color, on_click=lambda _, v=value, l=label: self.copy_to_clipboard(v, l)),
+            ]),
+            ft.Container(
+                content=ft.Text(value if value else "-", size=15, color=self.text_color, soft_wrap=True),
+                padding=ft.padding.only(right=10),
+            ),
+        ], spacing=4, width=300)
 
     async def async_copy_to_clipboard(self, text, label):
         try:
