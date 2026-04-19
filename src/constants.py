@@ -1,5 +1,5 @@
 APP_NAME = "password_manager"
-APP_VERSION = "0.8.6.10"
+APP_VERSION = "0.8.6.11"
 DEFAULT_SETTINGS = {
     "theme": "dark",
     "lang": "zh"

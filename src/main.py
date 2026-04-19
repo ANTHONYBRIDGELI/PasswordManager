@@ -2,8 +2,6 @@ import flet as ft
 import json
 import os
 import re
-import subprocess
-import platform
 from datetime import datetime
 
 from constants import (
@@ -113,26 +111,7 @@ class PasswordManagerApp:
         self.page.show_dialog(dialog)
     
     def detect_system_theme(self):
-        if platform.system() == "Android":
-            try:
-                result = subprocess.run(
-                    ["powershell", "-Command", "(Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize').AppsUseLightTheme"],
-                    capture_output=True, text=True
-                )
-                return "light" if "0" not in result.stdout else "dark"
-            except:
-                return "dark"
-        elif platform.system() == "Darwin":
-            try:
-                result = subprocess.run(
-                    ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                    capture_output=True, text=True
-                )
-                return "dark" if "Dark" in result.stdout else "light"
-            except:
-                return "light"
-        else:
-            return "dark"
+        return "dark"
     
     def update_theme_mode(self):
         theme = self.theme_setting
@@ -333,24 +312,10 @@ class PasswordManagerApp:
         self.page.show_dialog(dialog)
     
     def get_downloads_dir(self):
-        if platform.system() == "Android":
-            app_dir = os.path.join(os.getcwd(), "exports")
-            if not os.path.exists(app_dir):
-                os.makedirs(app_dir, exist_ok=True)
-            return app_dir
-        elif platform.system() == "Darwin":
-            downloads = os.path.join(os.path.expanduser("~"), "Downloads")
-            if os.path.exists(downloads):
-                return downloads
-            return os.path.expanduser("~")
-        else:
-            downloads = os.path.join(os.path.expanduser("~"), "Downloads")
-            if os.path.exists(downloads):
-                return downloads
-            xdg_download = os.path.expanduser("~/下载")
-            if os.path.exists(xdg_download):
-                return xdg_download
-            return os.path.expanduser("~")
+        app_dir = os.path.join(os.getcwd(), "exports")
+        if not os.path.exists(app_dir):
+            os.makedirs(app_dir, exist_ok=True)
+        return app_dir
     
     async def async_export_passwords(self):
         if not self.passwords:
@@ -378,6 +343,7 @@ class PasswordManagerApp:
             if self.file_picker is None or not self.file_picker_initialized:
                 self.file_picker = ft.FilePicker()
                 self.file_picker_initialized = True
+                self.page.overlay.append(self.file_picker)
             
             result = await self.file_picker.save_file(
                 dialog_title=self.t("export"),

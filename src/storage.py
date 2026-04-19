@@ -50,7 +50,14 @@ def ensure_app_folder(page=None):
             if not os.path.exists(path):
                 os.makedirs(path, exist_ok=True)
             if os.path.exists(path) and os.access(path, os.W_OK):
-                return path
+                test_file = os.path.join(path, ".write_test")
+                try:
+                    with open(test_file, "w") as f:
+                        f.write("test")
+                    os.remove(test_file)
+                    return path
+                except:
+                    pass
         except:
             pass
     return None
@@ -265,13 +272,22 @@ async def pick_documents_folder(page):
     picker = ft.FilePicker()
     page.overlay.append(picker)
     page.update()
-    
+
+    try:
+        result = await picker.get_directory_path(dialog_title="选择 Documents 文件夹")
+        if result and os.path.exists(result) and os.access(result, os.W_OK):
+            result_path = save_documents_base(page, result)
+            if result_path:
+                return result_path
+    except Exception as e:
+        print(f"get_directory_path failed: {e}")
+
     result = await picker.pick_files(
-        dialog_title="选择 Documents 文件夹",
+        dialog_title="选择 Documents 文件夹（请选择任意文件）",
         initial_directory="/storage/emulated/0/Documents",
         allow_multiple=False
     )
-    
+
     if result and len(result) > 0:
         file_path = result[0].path
         if file_path:
@@ -280,5 +296,5 @@ async def pick_documents_folder(page):
                 result_path = save_documents_base(page, base)
                 if result_path:
                     return result_path
-    
+
     return None
