@@ -2,67 +2,27 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/password_entry.dart';
 
 class StorageService {
   static const String _appFolder = 'PasswordManager';
-  static const String _passwordFile = '.passwords.dat';
-  static const String _keyFile = '.encryption_key';
-  static const String _settingsFile = 'settings.json';
-  static const String _colorThemesFile = 'color_themes.json';
-  static const String _langFile = 'language.json';
-  static const String _storagePathKey = 'documents_uri';
+  static const String _passwordFile = 'passwords.dat';
+  static const String _keyFile = 'encryption_key';
+  static const String _groupsFile = 'groups.json';
 
   String? _storagePath;
   encrypt.Key? _encryptionKey;
 
   Future<String?> getStoragePath() async {
     if (_storagePath != null) return _storagePath;
-
-    final prefs = await SharedPreferences.getInstance();
-    final savedPath = prefs.getString(_storagePathKey);
-
-    if (savedPath != null && await Directory(savedPath).exists()) {
-      _storagePath = savedPath;
+    final extDir = await getExternalStorageDirectory();
+    if (extDir != null) {
+      _storagePath = extDir.path;
       return _storagePath;
     }
-
-    try {
-      final extDir = await getExternalStorageDirectory();
-      if (extDir != null) {
-        String docsPath = extDir.path;
-        if (docsPath.endsWith('/Android/data')) {
-          docsPath = docsPath.replaceAll('/Android/data', '');
-        }
-        docsPath = '$docsPath/Documents';
-
-        final docsDir = Directory(docsPath);
-        if (!await docsDir.exists()) {
-          await docsDir.create(recursive: true);
-        }
-        if (await docsDir.exists()) {
-          _storagePath = docsPath;
-          await prefs.setString(_storagePathKey, _storagePath!);
-          return _storagePath;
-        }
-
-        _storagePath = extDir.path;
-        await prefs.setString(_storagePathKey, _storagePath!);
-        return _storagePath;
-      }
-    } catch (e) {
-    }
-
-    try {
-      final docsDir = await getApplicationDocumentsDirectory();
-      _storagePath = docsDir.path;
-      await prefs.setString(_storagePathKey, _storagePath!);
-      return _storagePath;
-    } catch (e) {
-    }
-
-    return null;
+    final docsDir = await getApplicationDocumentsDirectory();
+    _storagePath = docsDir.path;
+    return _storagePath;
   }
 
   Future<String?> getAppFolderPath() async {
@@ -74,7 +34,6 @@ class StorageService {
   Future<bool> ensureAppFolder() async {
     final path = await getAppFolderPath();
     if (path == null) return false;
-
     final dir = Directory(path);
     if (!await dir.exists()) {
       await dir.create(recursive: true);
@@ -96,7 +55,8 @@ class StorageService {
         _encryptionKey = encrypt.Key.fromBase64(keyData.trim());
         return _encryptionKey;
       } catch (e) {
-        return null;
+        _encryptionKey = encrypt.Key.fromSecureRandom(32);
+        return _encryptionKey;
       }
     }
 
@@ -107,10 +67,9 @@ class StorageService {
         await dir.create(recursive: true);
       }
       await keyFile.writeAsString(_encryptionKey!.base64);
-      return _encryptionKey;
     } catch (e) {
-      return null;
     }
+    return _encryptionKey;
   }
 
   encrypt.Encrypter _getEncrypter(encrypt.Key key) {
@@ -132,16 +91,19 @@ class StorageService {
       if (key == null) return [];
 
       final parts = encryptedContent.split('|');
-      if (parts.length != 2) return [];
+      if (parts.length == 2) {
+        try {
+          final iv = encrypt.IV.fromBase64(parts[0]);
+          final encrypter = _getEncrypter(key);
+          final encryptedBytes = encrypt.Encrypted.fromBase64(parts[1]);
+          final decrypted = encrypter.decrypt(encryptedBytes, iv: iv);
+          final data = jsonDecode(decrypted) as List;
+          return data.map((item) => PasswordEntry.fromDict(item)).toList();
+        } catch (e) {
+        }
+      }
 
-      final iv = encrypt.IV.fromBase64(parts[0]);
-      final encrypter = _getEncrypter(key);
-
-      final encryptedBytes = encrypt.Encrypted.fromBase64(parts[1]);
-      final decrypted = encrypter.decrypt(encryptedBytes, iv: iv);
-      final data = jsonDecode(decrypted) as List;
-
-      return data.map((item) => PasswordEntry.fromDict(item)).toList();
+      return [];
     } catch (e) {
       return [];
     }
@@ -170,134 +132,98 @@ class StorageService {
     }
   }
 
-  Future<Map<String, String>?> loadSettings() async {
-    final folderPath = await getAppFolderPath();
-    if (folderPath == null) return null;
-
-    final settingsFile = File('$folderPath/$_settingsFile');
-    if (!await settingsFile.exists()) return null;
-
-    try {
-      final content = await settingsFile.readAsString();
-      final data = jsonDecode(content) as Map<String, dynamic>;
-      return data.map((k, v) => MapEntry(k, v.toString()));
-    } catch (e) {
-      return null;
-    }
-  }
-
-  Future<void> saveSettings(Map<String, String> settings) async {
+  Future<void> saveGroups(List<PasswordGroup> groups) async {
     final folderPath = await getAppFolderPath();
     if (folderPath == null) return;
 
     await ensureAppFolder();
-    final settingsFile = File('$folderPath/$_settingsFile');
-    await settingsFile.writeAsString(jsonEncode(settings));
-  }
-
-  Future<Map<String, Map<String, String>>?> loadColorThemes() async {
-    final folderPath = await getAppFolderPath();
-    if (folderPath == null) return null;
-
-    final themesFile = File('$folderPath/$_colorThemesFile');
-    if (!await themesFile.exists()) return null;
 
     try {
-      final content = await themesFile.readAsString();
-      final data = jsonDecode(content) as Map<String, dynamic>;
-      return data.map((k, v) => MapEntry(
-        k,
-        (v as Map<String, dynamic>).map((k2, v2) => MapEntry(k2, v2.toString())),
-      ));
+      final groupsFile = File('$folderPath/$_groupsFile');
+      await groupsFile.writeAsString(jsonEncode(groups.map((g) => g.toDict()).toList()));
     } catch (e) {
-      return null;
+      rethrow;
     }
   }
 
-  Future<void> saveColorThemes(Map<String, Map<String, String>> themes) async {
+  Future<List<PasswordGroup>> loadGroups() async {
     final folderPath = await getAppFolderPath();
-    if (folderPath == null) return;
+    if (folderPath == null) return [];
 
-    await ensureAppFolder();
-    final themesFile = File('$folderPath/$_colorThemesFile');
-    await themesFile.writeAsString(jsonEncode(themes));
-  }
-
-  Future<Map<String, Map<String, String>>?> loadLanguages() async {
-    final folderPath = await getAppFolderPath();
-    if (folderPath == null) return null;
-
-    final langFile = File('$folderPath/$_langFile');
-    if (!await langFile.exists()) return null;
+    final groupsFile = File('$folderPath/$_groupsFile');
+    if (!await groupsFile.exists()) return [];
 
     try {
-      final content = await langFile.readAsString();
-      final data = jsonDecode(content) as Map<String, dynamic>;
-      return data.map((k, v) => MapEntry(
-        k,
-        (v as Map<String, dynamic>).map((k2, v2) => MapEntry(k2, v2.toString())),
-      ));
+      final content = await groupsFile.readAsString();
+      final data = jsonDecode(content) as List;
+      return data.map((item) => PasswordGroup.fromDict(item)).toList();
     } catch (e) {
-      return null;
+      return [];
     }
   }
 
-  Future<void> saveLanguages(Map<String, Map<String, String>> languages) async {
-    final folderPath = await getAppFolderPath();
-    if (folderPath == null) return;
-
-    await ensureAppFolder();
-    final langFile = File('$folderPath/$_langFile');
-    await langFile.writeAsString(jsonEncode(languages));
-  }
-
-  Future<bool> hasStorage() async {
-    final path = await getAppFolderPath();
-    return path != null;
-  }
-
-  Future<String?> selectStorageFolder() async {
-    final path = await getStoragePath();
-    return path;
-  }
-
-  Future<void> setStoragePath(String path) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_storagePathKey, path);
-    _storagePath = path;
-  }
-
-  Future<String> exportPasswords(List<PasswordEntry> passwords) async {
+  Future<String> exportData(List<PasswordEntry> passwords, List<PasswordGroup> groups) async {
     final data = {
-      'version': '1.0',
+      'version': '2.0',
       'exported_at': DateTime.now().toIso8601String(),
       'password_count': passwords.length,
+      'group_count': groups.length,
       'passwords': passwords.map((p) => p.toDict()).toList(),
+      'groups': groups.map((g) => g.toDict()).toList(),
     };
     return jsonEncode(data);
   }
 
-  Future<List<PasswordEntry>> importPasswords(String jsonContent) async {
+  Future<({List<PasswordEntry> passwords, List<PasswordGroup> groups})> importData(String jsonContent) async {
     final data = jsonDecode(jsonContent);
 
-    List<dynamic> imported;
-    if (data is Map && data.containsKey('passwords')) {
-      imported = data['passwords'] as List;
-    } else if (data is List) {
-      imported = data;
+    List<PasswordGroup> groups = [];
+    List<PasswordEntry> passwords = [];
+
+    final bool isOldFormat = data is List || (data is Map && !data.containsKey('groups'));
+
+    if (isOldFormat) {
+      List<dynamic> imported;
+      if (data is Map && data.containsKey('passwords')) {
+        imported = data['passwords'] as List;
+      } else if (data is List) {
+        imported = data;
+      } else {
+        throw FormatException('Invalid file format');
+      }
+
+      passwords = imported
+          .whereType<Map<String, dynamic>>()
+          .where((item) => item.containsKey('name') && item.containsKey('password'))
+          .map((item) => PasswordEntry(
+                name: item['name']?.toString() ?? '',
+                account: item['account']?.toString() ?? '',
+                password: item['password']?.toString() ?? '',
+                notes: item['notes']?.toString() ?? '',
+                groupId: 'default',
+              ))
+          .toList();
+
+      groups = [
+        PasswordGroup(id: 'default', name: '默认分组', color: '#58A6FF'),
+      ];
     } else {
-      throw FormatException('Invalid file format');
+      if (data is Map) {
+        if (data.containsKey('groups')) {
+          groups = (data['groups'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map((item) => PasswordGroup.fromDict(item))
+              .toList();
+        }
+
+        final passwordList = data['passwords'] as List? ?? [];
+        passwords = passwordList
+            .whereType<Map<String, dynamic>>()
+            .map((item) => PasswordEntry.fromDict(item))
+            .toList();
+      }
     }
 
-    return imported
-        .whereType<Map<String, dynamic>>()
-        .where((item) => item.containsKey('name') && item.containsKey('password'))
-        .map((item) => PasswordEntry(
-              name: item['name']?.toString() ?? '',
-              account: item['account']?.toString() ?? '',
-              password: item['password']?.toString() ?? '',
-              notes: item['notes']?.toString() ?? '',
-            ))
-        .toList();
+    return (passwords: passwords, groups: groups);
   }
 }

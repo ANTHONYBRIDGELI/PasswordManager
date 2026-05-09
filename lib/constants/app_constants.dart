@@ -1,5 +1,5 @@
 const String appName = 'password_manager';
-const String appVersion = '0.8.7';
+const String appVersion = '0.8.8';
 
 const Map<String, String> defaultSettings = {
   'theme': 'dark',
@@ -82,8 +82,8 @@ const Map<String, Map<String, String>> defaultLanguages = {
     'light': '明亮',
     'follow_system': '跟随系统',
     'language': '语言',
-    'export': '导出密码本',
-    'import': '导入密码本',
+    'export': '导出信息',
+    'import': '导入信息',
     'add_password': '添加密码',
     'edit_password': '编辑密码',
     'cancel': '取消',
@@ -136,8 +136,8 @@ const Map<String, Map<String, String>> defaultLanguages = {
     'light': 'Light',
     'follow_system': 'Follow System',
     'language': 'Language',
-    'export': 'Export Passwords',
-    'import': 'Import Passwords',
+    'export': 'Export Data',
+    'import': 'Import Data',
     'add_password': 'Add Password',
     'edit_password': 'Edit Password',
     'cancel': 'Cancel',
